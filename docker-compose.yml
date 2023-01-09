@@ -1,0 +1,84 @@
+version: '3.5'
+
+services:
+  awx_web:
+    image: ansible/awx_web:latest
+    ports:
+      - "80:8052"
+    environment:
+      - AWS_ACCESS_KEY_ID=access_key
+      - AWS_SECRET_ACCESS_KEY=secret_key
+      - DATABASE_URL=postgres://awx:awxpass@db:5432/awx
+      - MEMCACHED_HOST=memcached
+      - REDIS_HOST=redis
+      - SECRET_KEY=secret_key
+    depends_on:
+      - db
+      - rabbitmq
+      - memcached
+      - redis
+    volumes:
+      - ./:/tmp/awx_web
+    command: >
+      sh -c '
+      set -e
+      until psql $DATABASE_URL -c "select 1" > /dev/null 2>&1; do
+        echo "Waiting for postgres..."
+        sleep 1
+      done
+
+      /tmp/awx_web/scripts/configure_instance.sh
+      '
+
+  awx_task:
+    image: ansible/awx_task:latest
+    environment:
+      - AWS_ACCESS_KEY_ID=access_key
+      - AWS_SECRET_ACCESS_KEY=secret_key
+      - DATABASE_URL=postgres://awx:awxpass@db:5432/awx
+      - MEMCACHED_HOST=memcached
+      - REDIS_HOST=redis
+      - SECRET_KEY=secret_key
+    depends_on:
+      - db
+      - rabbitmq
+      - memcached
+      - redis
+    volumes:
+      - ./:/tmp/awx_task
+    command: >
+      sh -c '
+      set -e
+      until psql $DATABASE_URL -c "select 1" > /dev/null 2>&1; do
+        echo "Waiting for postgres..."
+        sleep 1
+      done
+
+      /tmp/awx_task/scripts/configure_instance.sh
+      '
+
+  rabbitmq:
+    image: rabbitmq:3
+    environment:
+      - RABBITMQ_DEFAULT_USER=awx
+      - RABBITMQ_DEFAULT_PASS=awxpass
+      - RABBITMQ_DEFAULT_VHOST=awx
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "node_health_check"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: postgres:10
+    environment:
+      - POSTGRES_USER=awx
+      - POSTGRES_PASSWORD=awxpass
+      - POSTGRES_DB=awx
+    volumes:
+      - pgdata:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD", "pg
